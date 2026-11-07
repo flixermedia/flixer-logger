@@ -1,6 +1,8 @@
 # Flixer Logger
 
-This repository is under development and must not be used for production logging.
+This repository is under development. The Flixer integrations are implemented,
+but production acceptance, image publication and target-scale performance
+verification are still required before relying on it for production logging.
 
 The machine-readable OpenAPI 3.1 contract is available at
 `GET /api/openapi.json` and in [`internal/httpapi/openapi.json`](internal/httpapi/openapi.json).
@@ -183,8 +185,14 @@ overwrite locally modified snapshot files. The Flixer Compose configuration
 uses a signed Unix socket on its shared secrets volume for local producer
 enrollment; it does not send those credentials over the plaintext API network.
 The logger endpoint itself still requires HTTPS except on literal loopback.
-This is not a complete production deployment: Compose does not yet provision
-or pair a logger, and legacy logs and task diagnostics remain active.
+The production Compose stack now provisions Logger with internal TLS, a
+protected owner bootstrap credential and Flixer-managed local enrollment.
+Flixer, Streamer, Indexer, AI and Updater export asynchronously; Indexer task
+output is stored in Logger rather than Redis. These integrations have local
+build/test coverage, but Docker image publication and container acceptance
+remain unverified in this environment. Flixer, Streamer and Indexer no longer
+write application-managed log files; Compose retains a separate archive
+directory for pre-migration log files.
 Producer credentials issued with a recorded ID are cleared when revoked through
 Flixer administration and reissued on the next enrollment refresh. Revocations
 made directly at the logger, or credentials issued before Flixer recorded IDs,
@@ -208,9 +216,9 @@ owned by the logger user or root, with no group or world write permission.
 `logs/logger` and `logs/logger/pebble` must be real directories owned by the
 logger user; `logs/logger` must be inaccessible to other users. The logger refuses unsafe
 permissions rather than changing them. Ancestors above `DATA_DIR` must also
-be protected from untrusted users. The existing Flixer Compose stacks make
-`logs` world-writable for legacy file logs and are not compatible with this
-storage layout; do not mount logger data there until the stacks are migrated.
+be protected from untrusted users. Flixer Compose keeps Logger storage private
+under `logs/logger`; legacy top-level log files are moved to a separate archive
+directory during initialization.
 
 Run tests with `go test -race ./...`. The experimental server requires
 `--data-dir` and exactly one bootstrap method:
@@ -229,8 +237,9 @@ Run tests with `go test -race ./...`. The experimental server requires
 
 Neither file may be a symbolic link. Update the selected file atomically at the
 same path before requesting a reload. Non-loopback listeners require
-`--tls-cert` and `--tls-key`. Creating the owner secret does not automatically
-connect Flixer or provision producer credentials; pairing remains necessary.
+`--tls-cert` and `--tls-key`. In the standalone CLI flow, creating the owner
+secret does not automatically connect Flixer or provision producer
+credentials; pairing remains necessary.
 For example, after creating a private directory for the logger user:
 
 ```sh
@@ -327,17 +336,18 @@ directly with the logger and encrypts the resulting management credential;
 it never returns that management credential to the browser. If a later
 registration step fails, Flixer keeps the redeemed credential encrypted and
 offers a retry. If the exchange response is lost before Flixer can persist
-it, the owner must create a new invitation. Automatic Flixer connection and
-management credential renewal are not implemented.
-Flixer's experimental `/api/admin/logger` endpoints can store an operator-
-provisioned management token encrypted in its configuration store, manage the
-deployment's retention policy, and broker 60-second query tokens for an admin.
-Pairing is available as described above, but connecting Flixer is not
-automatic. Once paired, supported producers can enroll over a protected
-control connection.
-After registration, Flixer issues and encrypts an ingestion credential and
-exports its own logs through a bounded in-memory queue while keeping the legacy
-appenders. It renews the credential before expiration when the logger is
+it, the owner must create a new invitation. Automatic management-credential
+renewal is available for the local owner-file bootstrap used by bundled
+deployments; external pairings still require owner-issued replacement
+credentials.
+Flixer's `/api/admin/logger` endpoints manage the paired deployment,
+retention, quotas and ingestion policy, broker 60-second query tokens for an
+admin, and enroll supported producers over a protected control connection.
+Flixer automatically bootstraps the local bundled Compose deployment from its
+protected owner file. External deployments use an owner-issued pairing.
+Flixer issues and encrypts an ingestion credential and exports its own logs
+through a bounded in-memory queue without writing application log files. It
+renews the credential before expiration when the logger is
 reachable. Registration and renewal require a logger version that supports
 application-bound credentials: Flixer requests an ingest credential bound to
 `flixer` and verifies the returned binding. Existing legacy tokens are renewed
@@ -403,16 +413,12 @@ Concurrent commits and subscription snapshots are serialized to prevent a gap
 between replay and live delivery; this overhead has not been benchmarked under
 the full target workload.
 
-The repository includes an experimental non-root Docker image. It deliberately
-has no default credentials or deployment configuration; the writable data
-directory and owner-only credential digest file must be provisioned for UID
-65531. This UID differs from the Indexer and Streamer images' UID 65532 so
-their processes cannot access private logger files just because they share a
-host. Earlier experimental logger images used UID 65532; stop the logger and
-securely update ownership of its existing private data and credential file
-before upgrading, without changing unrelated files. Non-loopback listeners
-require a certificate and private key readable by that user. This image is not
-yet integrated with Flixer provisioning or Compose.
+The repository includes an experimental non-root Docker image integrated with
+the bundled Compose service definition. It has no default credentials or
+deployment configuration; initialization prepares the writable data directory
+and protected owner bootstrap. Non-loopback listeners require a certificate
+and private key readable by the logger user. Docker build and image publication
+have not yet been verified in this environment.
 
 The Go exporter supports `RotateToken` for an unchanged destination. New
 delivery attempts use the replacement token; an already in-flight request can
@@ -424,8 +430,10 @@ replacement belongs to the same deployment and application before rotating:
 the exporter cannot verify this from the token. This method does not provision
 or watch credentials, reset an open circuit, or change the logger endpoint.
 
-Flixer Web includes an experimental Logging page for connection, retention, logical quotas,
-recent and indexed historical events, severity totals and live viewing. Live
-complete full-text search and analytics, pairing, physical disk quotas,
-multi-service integration and deployment described in the logging
-specification are not yet implemented.
+Flixer Web includes an experimental Logging page for pairing and connection,
+retention and logical quotas, historical search, advanced filters, trace/task
+correlation, analytics, grouped errors, live viewing, credential management
+and Logger health/capacity. There is no hard physical disk quota. Owner backup
+scheduling and restore orchestration, automatic management-credential renewal,
+target-scale performance validation and production container acceptance remain
+outstanding.

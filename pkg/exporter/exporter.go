@@ -128,11 +128,13 @@ func New(config Config) (*Exporter, error) {
 	config.Endpoint = u.String()
 	token := config.Token
 	config.Token = ""
+	client, err := newLoggerHTTPClient(config.Timeout)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Exporter{
-		config: config, client: &http.Client{Timeout: config.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		}},
+		config: config, client: client,
 		token: token, queue: make(chan []byte, config.QueueSize), done: make(chan struct{}), ctx: ctx, cancel: cancel,
 	}
 	go e.run()
