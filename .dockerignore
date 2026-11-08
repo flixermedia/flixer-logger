@@ -7,3 +7,5 @@
 !internal/**
 !pkg/
 !pkg/**
+!scripts/
+!scripts/logger-entrypoint.sh

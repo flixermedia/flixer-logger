@@ -1,6 +1,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
 ARG TARGETOS
 ARG TARGETARCH
+ARG APP_VERSION=
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -8,7 +9,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/flixer-logger ./cmd/flixer-logger
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X github.com/flixermedia/flixer-logger/internal/httpapi.Version=${APP_VERSION}" -o /out/flixer-logger ./cmd/flixer-logger
 
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates openssl \

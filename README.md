@@ -4,6 +4,17 @@ This repository is under development. The Flixer integrations are implemented,
 but production acceptance, image publication and target-scale performance
 verification are still required before relying on it for production logging.
 
+Optional Sentry reporting is configured in Flixer's General > Error Monitoring
+dashboard. The global and logger switches must both be enabled and the logger DSN
+set. `FLIXER_URL` points to the API (default `http://127.0.0.1:8083`), and
+`SENTRY_ENVIRONMENT` defaults to `production`. The logger starts without waiting
+for the API and retries loading its configuration while reporting is disabled.
+Error-level logger failures and HTTP or process panics send a generic event;
+request data, log messages, errors, stack traces and stored log content are not
+exported. Restart the logger after changing the monitoring settings.
+Older `SENTRY_DSN` environment values are no longer used; copy the DSN to the
+dashboard before restarting an existing installation.
+
 The machine-readable OpenAPI 3.1 contract is available at
 `GET /api/openapi.json` and in [`internal/httpapi/openapi.json`](internal/httpapi/openapi.json).
 It describes the current experimental API, not unimplemented specification
@@ -437,3 +448,6 @@ and Logger health/capacity. There is no hard physical disk quota. Owner backup
 scheduling and restore orchestration, automatic management-credential renewal,
 target-scale performance validation and production container acceptance remain
 outstanding.
+Development builds report the source version from `internal/httpapi/VERSION` with a
+`-dev` suffix. Release images report the version injected at build time; a source
+version does not imply a published release.

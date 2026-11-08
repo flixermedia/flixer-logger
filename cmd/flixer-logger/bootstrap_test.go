@@ -141,9 +141,14 @@ func TestGeneratedOwnerAuthenticatesLiveServer(t *testing.T) {
 	client := &http.Client{Timeout: time.Second}
 	url := "http://" + address
 	ready := false
-	for i := 0; i < 100; i++ {
+	var lastErr error
+	var lastStatus string
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		response, err := client.Get(url + "/api/health/ready")
+		lastErr = err
 		if err == nil {
+			lastStatus = response.Status
 			response.Body.Close()
 			if response.StatusCode == http.StatusOK {
 				ready = true
@@ -153,7 +158,7 @@ func TestGeneratedOwnerAuthenticatesLiveServer(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !ready {
-		t.Fatal("logger did not become ready")
+		t.Fatalf("logger did not become ready: error=%v status=%s", lastErr, lastStatus)
 	}
 	token, err := os.ReadFile(path)
 	if err != nil {

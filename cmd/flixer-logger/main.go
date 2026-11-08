@@ -19,6 +19,7 @@ import (
 
 	"github.com/flixermedia/flixer-logger/internal/auth"
 	"github.com/flixermedia/flixer-logger/internal/httpapi"
+	"github.com/flixermedia/flixer-logger/internal/monitoring"
 	"github.com/flixermedia/flixer-logger/internal/registry"
 	"github.com/flixermedia/flixer-logger/internal/retention"
 	"github.com/flixermedia/flixer-logger/internal/store"
@@ -144,7 +145,7 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	server := &http.Server{
-		Addr: *listen, Handler: handler, ReadHeaderTimeout: 5 * time.Second,
+		Addr: *listen, Handler: monitoring.Middleware(handler), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	listener, err := net.Listen("tcp", *listen)
@@ -154,6 +155,7 @@ func run(ctx context.Context, args []string) error {
 	defer listener.Close()
 	retentionStopped := make(chan struct{})
 	go func() {
+		defer monitoring.Recover()
 		defer close(retentionStopped)
 		retention.RunWithTracker(ctx, storage, handler.RetentionTracker())
 	}()
@@ -166,6 +168,7 @@ func run(ctx context.Context, args []string) error {
 		signal.Notify(checkpoints, syscall.SIGUSR1)
 		checkpointStopped := make(chan struct{})
 		go func() {
+			defer monitoring.Recover()
 			defer close(checkpointStopped)
 			for {
 				select {
@@ -191,6 +194,7 @@ func run(ctx context.Context, args []string) error {
 	signal.Notify(reload, syscall.SIGHUP)
 	defer signal.Stop(reload)
 	go func() {
+		defer monitoring.Recover()
 		for {
 			select {
 			case <-ctx.Done():
@@ -210,6 +214,7 @@ func run(ctx context.Context, args []string) error {
 	}()
 	stopped := make(chan struct{})
 	go func() {
+		defer monitoring.Recover()
 		defer close(stopped)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -231,11 +236,32 @@ func run(ctx context.Context, args []string) error {
 	return nil
 }
 
+func configureMonitoringLogger() {
+	slog.SetDefault(monitoring.WrapLogger(slog.New(slog.NewTextHandler(os.Stderr, nil))))
+}
+
 func main() {
+	configureMonitoringLogger()
+	defer monitoring.Recover()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := run(ctx, os.Args[1:]); err != nil {
+	baseURL := os.Getenv("FLIXER_URL")
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:8083"
+	}
+	monitoringDone := make(chan struct{})
+	go func() {
+		defer close(monitoringDone)
+		defer monitoring.Recover()
+		monitoring.Load(ctx, baseURL, os.Getenv("SENTRY_ENVIRONMENT"), &http.Client{Timeout: 5 * time.Second}, 5*time.Second)
+	}()
+	err := run(ctx, os.Args[1:])
+	cancel()
+	<-monitoringDone
+	if err != nil {
 		slog.Error("logger stopped", "error", err)
+		monitoring.Flush()
 		os.Exit(1)
 	}
+	monitoring.Flush()
 }

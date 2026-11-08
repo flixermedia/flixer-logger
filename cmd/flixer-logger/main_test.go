@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -46,6 +48,25 @@ func TestLoadCredentials(t *testing.T) {
 	}
 	if _, err := loadCredentials(path); err == nil {
 		t.Fatal("trailing data accepted")
+	}
+}
+
+func TestMonitoringLoggerDoesNotRecurseThroughStandardLog(t *testing.T) {
+	if os.Getenv("TEST_MONITORING_LOGGER_CHILD") == "1" {
+		configureMonitoringLogger()
+		log.Print("standard log")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMonitoringLoggerDoesNotRecurseThroughStandardLog$")
+	cmd.Env = append(os.Environ(), "TEST_MONITORING_LOGGER_CHILD=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("standard log did not complete: %v: %s", err, output)
+	}
+	if !strings.Contains(string(output), "standard log") {
+		t.Fatalf("standard log missing: %s", output)
 	}
 }
 

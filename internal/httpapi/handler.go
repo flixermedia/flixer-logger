@@ -26,6 +26,12 @@ import (
 const maxBodyBytes = 2 * 1024 * 1024
 const schemaHeader = "X-Flixer-Log-Schema"
 
+//go:embed VERSION
+var sourceVersion string
+
+// Version is set at build time for release images.
+var Version string
+
 //go:embed openapi.json
 var openAPI []byte
 
@@ -118,7 +124,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/logs/stream":
 		h.stream(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/health/live":
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		version := Version
+		if version == "" {
+			version = strings.TrimSpace(sourceVersion) + "-dev"
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": version})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/status":
 		h.status(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/owner/capacity":
