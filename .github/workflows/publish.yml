@@ -35,6 +35,33 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "new_release=$new_release" >> "$GITHUB_OUTPUT"
+      - name: Smoke test container ownership and readiness
+        shell: bash
+        run: |
+          docker build --build-arg APP_VERSION="${{ steps.version.outputs.version }}" -t flixer-logger-smoke:ci .
+          for uid in 65531 1000; do
+            name="flixer-logger-smoke-$uid"
+            trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+            docker run -d --name "$name" --user "$uid:$uid" \
+              --tmpfs "/data/logs/logger:uid=$uid,gid=$uid,mode=0700" \
+              --tmpfs "/run/flixer-logger:uid=$uid,gid=$uid,mode=0700" \
+              flixer-logger-smoke:ci --data-dir /data --listen 127.0.0.1:8098 \
+              --bootstrap-owner-file /run/flixer-logger/owner
+            ready=false
+            for attempt in {1..30}; do
+              if docker exec "$name" wget -q -O /dev/null http://127.0.0.1:8098/api/health/ready; then
+                ready=true
+                break
+              fi
+              sleep 1
+            done
+            if [ "$ready" != true ]; then
+              docker logs "$name"
+              exit 1
+            fi
+            docker rm -f "$name" >/dev/null
+            trap - EXIT
+          done
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3

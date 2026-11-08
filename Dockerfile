@@ -14,8 +14,9 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpat
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates openssl \
     && adduser -D -H -u 65531 logger \
-    && mkdir -p /data \
-    && chown logger:logger /data
+    && mkdir -p /data/logs/logger \
+    && chown logger:logger /data/logs/logger \
+    && chmod 0700 /data/logs/logger
 
 COPY --from=build /out/flixer-logger /usr/local/bin/flixer-logger
 COPY scripts/logger-entrypoint.sh /usr/local/bin/logger-entrypoint
