@@ -4,6 +4,7 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -367,6 +368,7 @@ func (s *Store) PutBatchEvents(deployment string, events []Event) ([]Event, erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	nowNS := time.Now().UnixNano()
+	// Keep committed batches ordered even if the wall clock moves backwards.
 	if nowNS <= s.lastIngestNS {
 		if s.lastIngestNS == int64(^uint64(0)>>1) {
 			return nil, errors.New("ingestion timestamp exhausted")
@@ -478,6 +480,8 @@ func (s *Store) PutBatchEvents(deployment string, events []Event) ([]Event, erro
 		return nil, fmt.Errorf("commit log batch: %w", err)
 	}
 	s.lastIngestNS = nowNS
+	// Events in a batch share a timestamp; publish them in storage-key order
+	// so live cursors resume after the last event actually delivered.
 	sort.Slice(inserted, func(i, j int) bool {
 		return segment(inserted[i].EventID) < segment(inserted[j].EventID)
 	})
@@ -561,6 +565,63 @@ func (s *Store) DeleteBefore(deployment string, cutoff time.Time, limit int) (in
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deleteBeforeLocked(deployment, cutoff, limit)
+}
+
+// ClearDeployment removes all retained events and derived indexes for one deployment.
+func (s *Store) ClearDeployment(deployment string) (uint64, error) {
+	if !validDeployment(deployment) {
+		return 0, fmt.Errorf("%w: invalid deployment", ErrInvalidInput)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	aggregate := aggregatePrefix(deployment)
+	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: []byte(aggregate), UpperBound: []byte(aggregate + "~")})
+	if err != nil {
+		return 0, err
+	}
+	var cleared uint64
+	for valid := iter.First(); valid; valid = iter.Next() {
+		if len(iter.Value()) != 8 {
+			iter.Close()
+			return 0, errors.New("invalid deployment aggregate")
+		}
+		count := binary.BigEndian.Uint64(iter.Value())
+		if ^uint64(0)-cleared < count {
+			iter.Close()
+			return 0, errors.New("deployment event count overflow")
+		}
+		cleared += count
+	}
+	if err := iter.Error(); err != nil {
+		iter.Close()
+		return 0, err
+	}
+	if err := iter.Close(); err != nil {
+		return 0, err
+	}
+
+	batch := s.db.NewBatch()
+	defer batch.Close()
+	ranges := [][2]string{
+		{prefix(deployment), prefix(deployment) + "~"},
+		{"ids/" + segment(deployment) + "/", "ids/" + segment(deployment) + "/~"},
+		{"index/" + segment(deployment) + "/", "index/" + segment(deployment) + "/~"},
+		{aggregate, aggregate + "~"},
+		{sourceAggregatePrefix + segment(deployment) + "/", sourceAggregatePrefix + segment(deployment) + "/~"},
+	}
+	for _, keyRange := range ranges {
+		if err := batch.DeleteRange([]byte(keyRange[0]), []byte(keyRange[1]), nil); err != nil {
+			return 0, err
+		}
+	}
+	if err := setUsage(batch, deployment, 0); err != nil {
+		return 0, err
+	}
+	if err := batch.Commit(pebble.Sync); err != nil {
+		return 0, fmt.Errorf("commit log clear: %w", err)
+	}
+	return cleared, nil
 }
 
 func (s *Store) deleteBeforeLocked(deployment string, cutoff time.Time, limit int) (int, error) {

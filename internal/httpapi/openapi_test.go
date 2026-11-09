@@ -46,7 +46,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/status": {"get"}, "/api/owner/capacity": {"get"}, "/api/owner/capacity-policy": {"get", "put"}, "/api/logs": {"get"}, "/api/logs/batch": {"post"},
 		"/api/owner/credentials": {"get", "post"}, "/api/owner/credentials/{id}": {"delete"},
 		"/api/owner/pairings": {"get", "post"}, "/api/owner/pairings/{id}": {"delete"}, "/api/logger/pairings/redeem": {"post"},
-		"/api/logs/search": {"post"}, "/api/logs/trace/{trace_id}": {"get"},
+		"/api/logs/search": {"post"}, "/api/logs/clear": {"post"}, "/api/logs/trace/{trace_id}": {"get"},
 		"/api/logs/stats": {"get"}, "/api/logs/sources": {"get"}, "/api/logs/errors": {"get"}, "/api/logs/stream": {"get"},
 		"/api/logger/retention": {"get", "put"}, "/api/logger/ingestion-policy": {"get", "put"},
 		"/api/logger/quota": {"get", "put"}, "/api/logger/credentials": {"get", "post"},

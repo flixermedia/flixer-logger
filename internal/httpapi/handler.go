@@ -99,6 +99,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case r.Method == http.MethodPost && r.URL.Path == "/api/logs/batch":
 		h.ingest(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/logs/clear":
+		h.clearLogs(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/logs":
 		h.query(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/logs/trace/"):
