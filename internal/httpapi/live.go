@@ -205,6 +205,8 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "streaming unavailable")
 		return
 	}
+	// Serialize subscription and snapshot creation with commit-and-publish so
+	// events fall into either the replay snapshot or the live queue, not a gap.
 	h.liveOrdering.Lock()
 	sub, err := h.live.subscribe(identity.DeploymentID, filters)
 	if err != nil {

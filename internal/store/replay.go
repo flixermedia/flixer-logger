@@ -66,6 +66,7 @@ func (r *ReplaySnapshot) Events(ctx context.Context, limit int) ([]Event, error)
 	defer iter.Close()
 	events := make([]Event, 0)
 	size := 0
+	// The cursor event was already delivered; replay begins strictly after it.
 	if iter.SeekGE(r.start) {
 		for valid := iter.Next(); valid; valid = iter.Next() {
 			if err := ctx.Err(); err != nil {

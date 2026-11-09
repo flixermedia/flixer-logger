@@ -79,6 +79,7 @@ func (l *rateLimiter) allow(tenant string, credential [sha256.Size]byte, app str
 		}
 		buckets[i] = bucket
 	}
+	// Charge all applicable buckets only when every limit admits the batch.
 	for i, limit := range limits {
 		if wait == 0 {
 			buckets[i].tokens -= float64(count)
