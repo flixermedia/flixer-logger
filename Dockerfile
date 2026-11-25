@@ -13,7 +13,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpat
 
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates openssl \
-    && adduser -D -H -u 65531 logger \
+    && addgroup -g 1000 logger \
+    && adduser -D -H -u 1000 -G logger logger \
     && mkdir -p /data/logs/logger \
     && chown logger:logger /data/logs/logger \
     && chmod 0700 /data/logs/logger
